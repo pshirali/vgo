@@ -1,0 +1,252 @@
+#!/bin/bash
+
+# ---------------------------------------------------------------
+#  vGo -- a virtual workspace manager for Golang
+#  Author: Praveen G Shirali -- praveengshirali@gmail.com
+#  Copyright (c) 2017, Praveen G Shirali. MIT License.
+#  https://raw.githubusercontent.com/pshirali/vgo/master/LICENSE
+# ---------------------------------------------------------------
+
+REPO="github.com/pshirali/vgo"
+VERSION="0.0.1"
+HELP_SWITCHES="-h --help"
+
+CLR_BR_WHITE="\033[1;97m"
+CLR_BR_RED="\033[1;91m"
+CLR_BR_GREEN="\033[1;92m"
+CLR_BR_BLUE="\033[1;94m"
+CLR_BR_CYAN="\033[1;96m"
+CLR_RESET="\033[0m"
+WW=$CLR_BR_WHITE
+RR=$CLR_RESET
+
+VGO_BASE_RC=".vgo.baserc"
+VGO_EXTEND_RC=".vgo.extendrc"
+VGO_PROJ=".vgo.proj"
+VGO_BASH_RC=".vgo.bashrc"
+
+[ -z "$VGO_LEFT_BRACE" ] && VGO_LEFT_BRACE="\[$CLR_BR_CYAN\]["
+[ -z "$VGO_RIGHT_BRACE" ] && VGO_RIGHT_BRACE="] \[$CLR_RESET\]"
+[ -z "$VGO_CMD_DEACTIVATE" ] && VGO_CMD_DEACTIVATE=d
+[ -z "$VGO_CMD_CHDIR_PROJ" ] && VGO_CMD_CHDIR_PROJ=p
+[ -z "$VGO_CMD_CHDIR_ROOT" ] && VGO_CMD_CHDIR_ROOT=r
+
+function disp () { echo -e "$@"; }
+function err () { echo -e $CLR_BR_RED"$@"$CLR_RESET ; }
+function _is_member () { for i in $2; do if [[ "$1" == "$i" ]]; then echo "Y"; fi; done; }
+function _usage () { for i in "$@"; do disp "$i"; done; exit 0; }
+function _init () {
+	if [[ -z "$VGO_BASHRC_FILE" ]]; then
+		[ -z "$HOME" ] && err "ERROR: Can't locate bashrc. Env variable 'HOME' not set." && exit 1
+		[ -f "$HOME/.bash_profile" ] && VGO_BASHRC_FILE="$HOME/.bash_profile"
+		[ -f "$HOME/.bashrc" ] && VGO_BASHRC_FILE="$HOME/.bashrc"
+		[ -z "$VGO_BASHRC_FILE" ] && err "ERROR: Can't auto-determine your bashrc. Quitting!" && exit 1
+	fi
+	[ -z "$VGO_HOME" ] && err "ERROR: Env variable 'VGO_HOME' not set." && exit 1
+	[ ! -z "$VGO_NAME" ] && err "Disallowed. You are already in a vgo subshell." \
+			       	 	"Exit this shell and try again." && exit 1
+}
+
+function _write_vgo_bashrc () {
+	local bashrc="$VGO_HOME/$1/$VGO_BASH_RC"
+	echo export PATH=\""$VGO_HOME/$1/bin:\$PATH"\" >> "$bashrc"
+	echo export GOPATH=\""$VGO_HOME/$1"\" >> "$bashrc"
+	echo export VGO_NAME=\""$1"\" >> "$bashrc"
+	echo export PS1=\""$VGO_LEFT_BRACE$1$VGO_RIGHT_BRACE\$PS1"\" >> "$bashrc"
+	echo "function $VGO_CMD_CHDIR_PROJ () {" >> "$bashrc"
+	echo "	local TG=\"$VGO_HOME/$1/src/$2\"; [[ ! -d \"\$TG\" ]] && TG=\"\$(dirname \"\$TG\")\";" >> "$bashrc"
+	echo "	[[ ! -d \"\$TG\" ]] && echo \"ERROR: '\$TG' not found. Please update your env.\" && TG=\"\$VGO_HOME/\$VGO_NAME/src\"" >> "$bashrc"
+	echo "  cd \"\$TG\"" >> "$bashrc"
+	echo "}" >> "$bashrc"
+	echo "function exit () { echo -e Type \"$WW$VGO_CMD_DEACTIVATE$RR\" to exit this workspace. ; }" >> "$bashrc"
+	echo "function $VGO_CMD_DEACTIVATE () { builtin exit; }" >> "$bashrc"
+	echo "function $VGO_CMD_CHDIR_ROOT () { cd \"$VGO_HOME/$1\"; }" >> "$bashrc"
+	echo export VGO_CMD_DEACTIVATE="$VGO_CMD_DEACTIVATE" >> "$bashrc"
+	echo export VGO_CMD_CHDIR_PROJ="$VGO_CMD_CHDIR_PROJ" >> "$bashrc"
+	echo export VGO_CMD_CHDIR_ROOT="$VGO_CMD_CHDIR_ROOT" >> "$bashrc"
+	echo "$VGO_CMD_CHDIR_PROJ" >> "$bashrc"
+	echo "[ -f \"$VGO_HOME/$VGO_BASE_RC\" ] && source \"$VGO_HOME/$VGO_BASE_RC\"" >> "$bashrc"
+	echo "[ -f \"$VGO_HOME/$1/$VGO_EXTEND_RC\" ] && source \"$VGO_HOME/$1/$VGO_EXTEND_RC\"" >> "$bashrc"
+}
+
+function _exec () {
+	[ ! -z "$VGO_DEBUG"] && disp $CLR_BR_BLUE"DEBUG: Execute: $@"$CLR_RESET
+	"$@"
+	EXIT_CODE=$?
+	if [[ $EXIT_CODE != "0" ]]; then
+		err "vGo exited with errors. ExitCode: $EXIT_CODE"
+		exit $EXIT_CODE
+	fi
+}
+
+function _switch_env () {
+	if [[ -e "$VGO_BASHRC_FILE" ]]; then
+		cp "$VGO_BASHRC_FILE" "$VGO_HOME/$1/$VGO_BASH_RC"
+	else
+		rm -f "$VGO_HOME/$1/$VGO_BASH_RC"
+	fi
+	_write_vgo_bashrc "$1" "$2"
+	/bin/bash --rcfile "$VGO_HOME/$1/$VGO_BASH_RC" -i
+}
+
+function _workon_env () {
+	[ ! -z $(_is_member "$1" "$HELP_SWITCHES") ] && _usage \
+		"" \
+		$WW" Usage$RR: vgo workon <workspace-name> [project-path]" \
+		"" \
+		"   The 'workon' command is used to enter a workspace under named " \
+		"   <workspace-name> located inside the \$VGO_HOME folder." \
+		"" \
+		"   If the workspace doesn't exist, the following folder structure" \
+		"   is created automatically:" \
+		"      \$VGO_HOME" \
+		"        \\-- <workspace-name>" \
+		"             \\-- bin/" \
+		"             \\-- pkg/" \
+		"             \\-- src/" \
+		"" \
+		"   The workspace is entered by spawning a new bash sub-shell." \
+		"   In the sub-shell, \$VGO_HOME/<workspace-name>/bin is added to PATH" \
+		"   and the \$VGO_HOME/<workspace-name> is set as GOPATH." \
+		"" \
+		"   The optional 'project-path' can be set to a nested folder" \
+		"   that represents the repo where the project lives. When" \
+		"   supplied, the nested folders upto the parent of the deepest" \
+		"   subpath are created if they don't exist. The 'project-path'" \
+		"   is also stored under \$VGO_HOME/<workspace-name>/$VGO_PROJ" \
+		"   such that this folder can be automatically chdir'd to when" \
+		"   entering the workspace subsequently." \
+		"" \
+		$WW"   Example:"$RR \
+		"        First invocation:" \
+		"            vgo workon foo github.com/johndoe/foo" \
+		"        Subsequent invocations:" \
+		"            vgo workon foo" \
+		"" \
+		"     1. \$VGO_HOME/foo/bin, \$VGO_HOME/foo/pkg, \$VGO_HOME/foo/src" \
+		"        are created if they don't exist." \
+		"     2. 'github.com/johndoe/foo' will be written to \$VGO_HOME/foo/$VGO_PROJ" \
+		"     3. The path upto '\$VGO_HOME/foo/src/github.com/johndoe' will" \
+		"        be created if it doesn't exist." \
+		"     4. The subshell will chdir to '\$VGO_HOME/foo/github.com/johndoe'. From here," \
+		"        you can 'mkdir foo' and write code, 'git clone <github.com/johndoe/foo>'" \
+		"        or, 'go get github.com/johndoe/foo' if it already exists remotely." \
+		"     5. Once the folder '\$VGO_HOME/foo/github.com/johndoe/foo' exists, that'll" \
+		"        be chdir'd to automatically on subsequent invocations." \
+		"     6. If vGo rcfiles exist, they are sourced." \
+		""
+	_init
+	if [[ -z "$1" ]]; then
+		if [[ -z $(ls "$VGO_HOME") ]]; then
+			err "No workspaces found in $VGO_HOME." \
+                            "'vgo workon -h' for help."
+			exit 1
+		fi
+		for i in $_out; do echo "$VGO_HOME/$i/src" && [[ -d "$VGO_HOME/$i/src" ]] && echo "$i"; done
+		find "$VGO_HOME" -maxdepth 1 -mindepth 1 -type d | while read i; do
+			echo $(basename "$i")
+		done
+		exit
+	fi
+	local proj
+	_exec mkdir -p "$VGO_HOME/$1/bin"
+	_exec mkdir -p "$VGO_HOME/$1/pkg"
+	_exec mkdir -p "$VGO_HOME/$1/src"
+	proj="$VGO_HOME/$1/src"
+	if [[ ! -z "$2" ]]; then
+		local vgo_proj="$VGO_HOME/$1/$VGO_PROJ"
+		proj="$proj/$2"
+		echo "$2" > "$vgo_proj" && echo "vGo: project-path set to: $2"
+		[ ! -d "$proj" ] && DN=$(dirname "$proj") && _exec mkdir -p "$DN"
+	fi
+	unset proj
+	[ -f "$VGO_HOME/$1/$VGO_PROJ" ] && proj="$(cat "$VGO_HOME/$1/$VGO_PROJ")"
+	_switch_env "$1" "$proj"
+}
+
+function _show_info () {
+	_init
+	[ -f "$VGO_HOME/$VGO_BASE_RC" ] && vgo_base_rc_msg="$WW'$VGO_BASE_RC'$RR exists in $VGO_HOME"
+	disp $WW"VGO_HOME:"$RR
+	disp "\t$VGO_HOME\t$vgo_base_rc_msg"
+	if [[ -z $(ls "$VGO_HOME") ]]; then
+		err "No workspaces exist. Refer 'vgo workon -h' for help."
+		exit 1
+	fi
+	disp $WW"Workspaces:"$RR
+	find "$VGO_HOME" -maxdepth 1 -mindepth 1 -type d | while read i; do
+		i=$(basename "$i")
+		if [[ -d "$VGO_HOME/$i/src" ]]; then
+			_proj="("$CLR_BR_RED"PROJECT-NOT-SET"$CLR_RESET")"
+			unset _extendrc
+			[ -f "$VGO_HOME/$i/$VGO_PROJ" ] && _proj="(proj:$CLR_BR_GREEN$(cat "$VGO_HOME/$i/$VGO_PROJ")$CLR_RESET)"
+			[ -f "$VGO_HOME/$i/$VGO_EXTEND_RC" ] && _extendrc=" - (.vgo.extendrc:$CLR_BR_GREEN"EXISTS"$CLR_RESET)"
+			disp "\t$CLR_BR_CYAN$i$CLR_RESET - $_proj$_extendrc"
+		fi
+	done
+}
+
+function _show_env () {
+	env | grep "^VGO_"
+}
+
+function _unset_env () {
+	local vgoproj="$VGO_HOME/$1/$VGO_PROJ"
+	[ -f "$vgoproj" ] && rm -f "$vgoproj" && echo "Removed: $vgoproj"
+}
+
+function vgo () {
+	local vgo_msg
+	if [ -z "$VGO_HOME" ]; then
+		vgo_msg="Your VGO_HOME is currently not set!"
+	else
+		vgo_msg="Your VGO_HOME is currenly set to: $VGO_HOME"
+	fi
+	[ -z "$1" ] || [ ! -z $(_is_member "$1" "$HELP_SWITCHES") ] && _usage \
+		"" \
+		$WW"   vGo -- virtual workspace manager for Golang"$RR \
+		"   version: $VERSION | $REPO " \
+		"________________________________________________________________________ ___ __ _ ." \
+		"" \
+		$WW" Usage:$RR vgo <command> [args]" \
+		"" \
+		$WW" Commands:"$RR \
+		"    w, workon   -   Create/Switch to a workspace.          [+]" \
+		"     u, unset   -   Unset the project-path of a workspace." \
+		"      i, info   -   Show info on all workspaces." \
+		"       e, env   -   List all vGo environment variables." \
+		"   v, version   -   Show version and quit." \
+		"" \
+		"          [+]   -   Additional help available for this command:" \
+		"                    Usage: vgo <command> -h" \
+		"" \
+		$WW" Description:"$RR \
+		"" \
+		"         A Golang workspace is configured by setting the PATH and GOPATH env" \
+		"     variables relevant to your project. vGo extends a copy of your .bashrc" \
+		"     and enters a sub-shell with this extended configuration, which not only" \
+		"     configures the PATH and GOPATH, but also provides convenience commands to" \
+		"     switch to the project directories easily." \
+		"" \
+		"        vGo expects you to have your workspaces under a single parent folder." \
+		"     You must set the env variable VGO_HOME to this parent folder before you" \
+		"     use vGo. vGo treats each sub-folder inside VGO_HOME as a Golang workspace." \
+		"" \
+		"     $vgo_msg" \
+		"" \
+		$WW"     README:$RR $REPO/blob/master/README.md" \
+		"________________________________________________________________________ ___ __ _ ." \
+		"" \
+		"   Copyright (c) Praveen G Shirali 2017. MIT License." \
+		""
+	case "$1" in
+		w|workon) _workon_env "${@:2}";;
+		u|unset) _unset_env "${@:2}";;
+		i|info) _show_info;;
+		e|env) _show_env;;
+		v|version) echo "vGo version: $VERSION";;
+		*) echo "ERROR: Unknown option: $1" && exit 1;;
+	esac
+}
+
+vgo "$@"
