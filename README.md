@@ -149,3 +149,10 @@ You can override the `PS1` by setting the environment variables `VGO_LEFT_BRACE`
 
 > The presence of `VGO_NAME` is used to detect whether a workspace is active or not. DO NOT set the environment variable `VGO_NAME` yourself either inside or outside the workspace.
 
+
+## Advanced Usage
+
+
+All vGo configurations are overridable. vGo commands are implemented as bash functions. This allows code in `.vgo.baserc` and `.vgo.bashrc` to override any part of the configuration. You can implement your own commands; either across workspaces or per-workspace.
+
+As both files are sourced when entering the subshell, any function you directly call in these files will serve an `on_activation` trigger. The `VGO_CMD_DEACTIVATE` function can be overridden to call additional code to invoke tasks that should be triggered `on_deactivation`. Regular bash functions will serve as interactive commands available only inside the workspace. Enjoy!.
