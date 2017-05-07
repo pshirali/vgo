@@ -82,11 +82,70 @@ $VGO_HOME/foo/src
 
 2. A copy of your `bashrc` is placed inside `$VGO_HOME/foo` as `.vgo.bashrc`. All vGo configuration is append to this file. This includes setting `PATH` to `$VGO_HOME/foo/bin:$PATH`, setting `GOPATH` to `$VGO_PATH/foo` and code to configure all other commands.
 
-3. The `project-path` is stored into the file `$VGO_HOME/foo/.vgo.proj`. If the `project-path` doesn't exist, folders upto the basename of the `project-path` are recursively created inside the `$VGO_HOME/src` folder. In the above example, this would be `$VGO_HOME/src/github.com/johndoe`.
+3. The `project-path` is stored into the file `$VGO_HOME/foo/.vgo.proj`. If the `project-path` doesn't exist, folders upto the dirname of the `project-path` are recursively created inside the `$VGO_HOME/src` folder. In the above example, this would be `$VGO_HOME/src/github.com/johndoe`.
 
-> When the `project-path` folder doesn't exist, vGo doesn't know whether you intend to create a new project or pull existing code from a remote repo. The recursive folder creation till the basename of the `project-path` allows you to perform the last mile change yourself. From this point, you can:
+> When the `project-path` folder doesn't exist, vGo doesn't know whether you intend to create a new project or pull existing code from a remote repo. The recursive folder creation till the dirname of the `project-path` allows you to perform the last mile change yourself. From this point, you can:
 > 1. `mkdir foo` and start writing code
 > 1. `git clone <repo-url>`: A leaf folder is created with the repo name
-> 1. `go get <repo-url>`: This works because the leaf folder doesn't yet exist. It has the same effect as `git clone`
+> 1. `go get <repo-url>`: This works because the leaf folder doesn't yet exist.
 
-w.i.p
+
+4. vGo allows you to source your own bash code in two different files. A `.vgo.baserc` can be placed in the `VGO_HOME` folder. The code from this file applies to all workspaces. A `.vgo.extendrc` can be placed in each workspace with code that applies only to that workspace. This allows you to override any functionality implemented in the preceeding `bashrc`. Here is an illustration of the order in which they are executed:
+
+```
++-------------------------------------------+
+|    original .bashrc or .bash_profile      |
++-------------------------------------------+
+|   vGo workspace configuration + commands  |
++-------------------------------------------+
+|               .vgo.baserc                 |
++-------------------------------------------+
+|              .vgo.extendrc                |
++-------------------------------------------+
+```
+
+5. The command to deactivate your workspace is `d`. (command names can be renamed. More on that later)
+
+6. To activate your workspace again call `vgo w foo`. Because your project-path is already configured, you'll either be taken to `$VGO_HOME/foo/src/github.com/johndoe` or `$VGO_HOME/foo/src/github.com/johndoe/foo` depending on whether the `foo` folder exists.
+
+7. To reconfigure a different project-path on an existing workspace, call `vgo w [exiting-workspace] [new-project-path]`. Example: `vgo w foo bitbucket.org/johndoe/baz`.
+
+#### `vgo u <workspace-name>`
+
+`vgo u | vgo unset` removes the the file `$VGO_HOME/foo/.vgo.proj` file which holds the project-path. On a workspace where a project-path is not set, a `vgo w <workspace>` will land you at `$VGO_HOME/<workspace>/src`.
+
+#### `vgo i`
+
+`vgo i | vgo info` lists all workspaces with their project-paths. It'll also indicate if `bashrc` override files exist.
+
+#### `vgo e`
+
+`vgo e | vgo env` lists all environment variables starting with `VGO_`. This command can be invoked both outside and inside the workspace.
+
+#### `vgo v`
+
+`vgo v | vgo version` displays the vGO version.
+
+
+## Build-in commands
+
+
+vGo has the following built-in commands which work only within an active workspace. The default commands are single-character (for :zap: productivity & minimalist freaks). They can however be renamed by setting an environment variable. Include a line with the format `export <Env. Variable>=<new-command>` into your original `.bashrc`.
+
+Command | Description | Env. Variable
+--------|-------------| -----------------------
+r | Switch to the workspace root folder `$VGO_HOME/<workspace>`  | `VGO_CMD_CHDIR_ROOT`
+p | Switch to the project-path. This can either be `$VGO_HOME/<workspace>/src/<project-path>` or `$VGO_HOME/<workspace>/src/$(dirname <project-path>)` | `VGO_CMD_CHDIR_PROJ`
+d | Deactivate workspace | `VGO_CMD_DEACTIVATE`
+
+> The `exit` command has been overridden to NOT exit the subshell. This is the default behavior in vGo. This has been done to discourage the use of `exit` habitually for both deactivation as well as exiting shells. You are encouraged to use a different deactivate command (or even the default) instead of `exit`. However, if you still wish to use `exit`, you can `export VGO_CMD_DEACTIVATE=exit`.
+
+
+## Setting `PS1`
+
+When a workspace is activated, the prompt is prefixed with the name of the workspace. vGo does this by modifying the `PS1` environment variable within the workspace. It sets this to `[<workspace-name>] <original-PS1>` by default, where `[<workspace-name>]` appears in bright cyan. (ANSI esc: 96m)
+
+You can override the `PS1` by setting the environment variables `VGO_LEFT_BRACE` and `VGO_RIGHT_BRACE` in your original `.bashrc`. The format for the `PS1` within the workspace is `PS1=$VGO_LEFT_BRACE$VGO_NAME$VGO_RIGHT_BRACE$PS1`, where `VGO_NAME` is the name of the workspace (injected automatically by vGo). You'd need to handle ANSI colors and blank spaces in the values of `VGO_LEFT_BRACE` and `VGO_RIGHT_BRACE`.
+
+> The presence of `VGO_NAME` is used to detect whether a workspace is active or not. DO NOT set the environment variable `VGO_NAME` yourself either inside or outside the workspace.
+
