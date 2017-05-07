@@ -53,7 +53,6 @@ function _write_vgo_bashrc () {
 	echo export GOPATH=\""$VGO_HOME/$1"\" >> "$bashrc"
 	echo export VGO_NAME=\""$1"\" >> "$bashrc"
 	echo export PS1=\""$VGO_LEFT_BRACE$1$VGO_RIGHT_BRACE\$PS1"\" >> "$bashrc"
-	echo "function $VGO_CMD_DEACTIVATE () { [[ ! -z \$VGO_NAME ]] && exit; }" >> "$bashrc"
 	echo "function $VGO_CMD_CHDIR_PROJ () {" >> "$bashrc"
 	echo "	local TG=\"$VGO_HOME/$1/src/$2\"; [[ ! -d \"\$TG\" ]] && TG=\"\$(dirname \"\$TG\")\";" >> "$bashrc"
 	echo "	[[ ! -d \"\$TG\" ]] && echo \"ERROR: '\$TG' not found. Please update your env.\" && TG=\"\$VGO_HOME/\$VGO_NAME/src\"" >> "$bashrc"
